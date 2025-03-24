@@ -1,0 +1,35 @@
+from scapy.all import *
+from scapy.fields import ByteField
+from scapy.packet import Packet
+import logging
+
+# 扩展ARP协议
+class ExtendedARP(Packet):
+    name = "ExtendedARP"
+    fields_desc = ARP.fields_desc + [
+        ByteField("power_state", 1)  # 0=sleep, 1=active
+    ]
+
+# 绑定新协议
+bind_layers(ARP, ExtendedARP)
+
+class ARPExtension:
+    def __init__(self, iface):
+        self.iface = iface
+        self.logger = logging.getLogger('ARPExtension')
+        
+    def send_arp_response(self, pkt, power_state):
+        """发送扩展的ARP响应"""
+        try:
+            arp_response = ExtendedARP(
+                op=2,  # ARP响应
+                hwsrc=get_if_hwaddr(self.iface),
+                psrc=pkt[ARP].pdst,
+                hwdst=pkt[ARP].hwsrc,
+                pdst=pkt[ARP].psrc,
+                power_state=power_state
+            )
+            sendp(Ether(dst=pkt[Ether].src)/arp_response, iface=self.iface, verbose=False)
+            self.logger.debug(f"Sent extended ARP response to {pkt[ARP].psrc} with state {power_state}")
+        except Exception as e:
+            self.logger.error(f"Failed to send ARP response: {str(e)}")
